@@ -841,7 +841,6 @@ class MyPVLocalDevice(MyPVDevice):
     _host: str
     _password: str | None
     _connection: MyPVHTTPConnection
-    _session: ClientSession | None
 
     def __init__(
         self,
@@ -863,7 +862,6 @@ class MyPVLocalDevice(MyPVDevice):
 
         self._host = host
         self._password = password
-        self._session = session
 
         if password:
             self._connection = MyPVHTTPSConnection(host, password, session=session)
@@ -879,54 +877,15 @@ class MyPVLocalDevice(MyPVDevice):
         """
         await self.disconnect()
 
-        if self._password:
-            return await self._async_connect(self._connection)
+        connection = self._connection
 
-        self._setup_uri = None
-        connections: tuple[MyPVHTTPConnection, MyPVHTTPConnection]
-        if isinstance(self._connection, MyPVHTTPSConnection):
-            https_connection = self._connection
-            http_connection = MyPVHTTPConnection(self._host, session=self._session)
-            connections = (https_connection, http_connection)
-        else:
-            http_connection = (
-                self._connection
-                if isinstance(self._connection, MyPVHTTPConnection)
-                else MyPVHTTPConnection(self._host, session=self._session)
-            )
-            https_connection = MyPVHTTPSConnection(self._host, session=self._session)
-            connections = (http_connection, https_connection)
-
-        authentication_error = None
         try:
-            for connection in connections:
-                try:
-                    if await self._async_connect(connection):
-                        if isinstance(connection, MyPVHTTPSConnection):
-                            self._setup_uri = f"https://{self._host}/"
-                        return True
-                except MyPVAuthenticationError as exc:
-                    authentication_error = exc
+            if not await connection.open():
+                return False
+        except MyPVConnectionError:
+            return False
         finally:
-            if not self.connected:
-                self._connection = connections[0]
-                self._uri = connections[0].uri
-
-        if authentication_error is not None:
-            raise authentication_error
-
-        return False
-
-    async def _async_connect(self, connection: MyPVHTTPConnection) -> bool:
-        """Connect using a specific transport."""
-        self._connection = connection
-        self._uri = connection.uri
-
-        try:
             try:
-                if not await connection.open():
-                    return False
-            finally:
                 if connection.mypv_dev:
                     self._serial_number = connection.mypv_dev["sn"]
                     self._firmware_version = connection.mypv_dev.get("fwversion")
@@ -935,7 +894,12 @@ class MyPVLocalDevice(MyPVDevice):
                         self._model = self._device_config["name"]
                     else:
                         self._model = connection.mypv_dev.get("device", "")
+            except MyPVDeviceNotSupportedError:
+                await connection.close()
+                raise
 
+        try:
+            # Get the device setup
             setup_values = await connection.fetch_setup()
             data_values = await connection.fetch_data()
             if not setup_values or not data_values:

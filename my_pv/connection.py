@@ -442,14 +442,10 @@ class MyPVHTTPSConnection(MyPVHTTPConnection):
     _PROTOCOL = "https"
     _SSL_CHECK = False
 
-    _password: str | None
+    _password: str
 
     def __init__(
-        self,
-        host: str,
-        password: str | None = None,
-        *,
-        session: ClientSession | None = None,
+        self, host: str, password: str, *, session: ClientSession | None = None
     ) -> None:
         """Initializes a my-PV HTTPS connect."""
         super().__init__(host, session=session)
@@ -457,9 +453,6 @@ class MyPVHTTPSConnection(MyPVHTTPConnection):
         self._password = password
 
     async def _auth(self, session: ClientSession) -> bool:
-        if not self._password:
-            return True
-
         auth_url = urlunsplit([self._PROTOCOL, self._host, "/auth.jsn", None, None])
 
         data = urlencode({"pw": self._password}, safe=DONT_ENCODE)
