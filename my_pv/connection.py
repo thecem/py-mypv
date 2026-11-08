@@ -276,12 +276,13 @@ class MyPVHTTPConnection(MyPVConnection):
             response = await session.get(mypv_dev_url, **self._request_kwargs())
             response_body = await response.text()
             response_json = {}
-            if response.content_type == "application/json":
+            if response_body:
                 response_json = json.loads(response_body)
 
             if response.status != 200:
                 logger.error(
-                    "Unexpected response %i %s: %s",
+                    "Unexpected response from %s: %i %s: %s",
+                    mypv_dev_url,
                     response.status,
                     response.reason,
                     response_body,
@@ -356,17 +357,22 @@ class MyPVHTTPConnection(MyPVConnection):
                 raise MyPVTooManyRequestsError(response.reason)
 
             response_json: dict[str, Any] = {}
-            if response.content_type == "application/json":
+            is_json_response = False
+            if response_body and (
+                response.content_type == "application/json" or response.status == 200
+            ):
                 response_json = json.loads(response_body)
+                is_json_response = True
 
-                if response.status == 200:
-                    return response_json
+            if response.status == 200 and is_json_response:
+                return response_json
 
             if response.status == 401:
                 raise MyPVAuthenticationError(response_json.get("msg"))
 
             logger.error(
-                "Unexpected response %i %s: %s",
+                "Unexpected response from %s: %i %s: %s",
+                url,
                 response.status,
                 response.reason,
                 response_body,

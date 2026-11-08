@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from my_pv import MyPVLocalDevice
-from my_pv.connection import MyPVHTTPSConnection
+from my_pv.connection import MyPVHTTPConnection, MyPVHTTPSConnection
 
 
 class _FakeConnection:
@@ -82,3 +82,19 @@ async def test_https_connection_skips_auth_without_password():
 
     assert await connection._auth(session)
     session.post.assert_not_called()
+
+
+async def test_http_connection_parses_json_with_text_plain_content_type():
+    """Some device firmware serves JSON with a text/plain content type."""
+    response = Mock(
+        status=200,
+        content_type="text/plain",
+        reason="OK",
+        text=AsyncMock(return_value='{"value": 42}'),
+    )
+    session = Mock(closed=False, get=AsyncMock(return_value=response))
+    connection = MyPVHTTPConnection("device.local", session=session)
+    connection._connected = True
+    connection._setup_url = "http://device.local/setup.jsn"
+
+    assert await connection.fetch_setup() == {"value": 42}
